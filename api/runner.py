@@ -5,15 +5,20 @@ import glob
 import os
 import logging
 
+import json
+
 
 class Runner(Resource):
 
     def post(self):
-
         # Cleanup (Old SVG files in the system
         for fl in glob.glob('/app/*.svg'):
             logging.info('Removing old files: ' + str(fl.title()))
             os.remove(fl)
+
+
+
+
 
         # Save file for Luigi task
         with open('id_list.json', 'w') as f:
