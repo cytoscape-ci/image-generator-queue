@@ -5,8 +5,6 @@ import glob
 import os
 import logging
 
-import json
-
 
 class Runner(Resource):
 
@@ -15,9 +13,6 @@ class Runner(Resource):
         for fl in glob.glob('/app/*.svg'):
             logging.info('Removing old files: ' + str(fl.title()))
             os.remove(fl)
-
-
-
 
 
         # Save file for Luigi task
@@ -29,7 +24,19 @@ class Runner(Resource):
         os.remove('id_list.json')
         logging.info('ID list file removed')
 
-        with open('report.txt', 'r') as res:
-            results = res.readlines()
+        try:
+            with open('report.txt', 'r') as res:
+                results = res.readlines()
+        except FileNotFoundError:
+            return {"message": "Failed to run the workflow."}, 500
 
-        return {"imageLocations": results}
+
+
+        resultMsg = {"imageLocations": results}
+
+        try:
+            os.remove('report.txt')
+        except FileNotFoundError:
+            pass
+
+        return resultMsg

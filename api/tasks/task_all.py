@@ -25,34 +25,36 @@ class RunTask(luigi.Task):
         ids = data['ids']
 
         # Credential is optional
-        crd = {}
+
+        uid = ""
+        pw = ""
         if 'credential' in data:
-            crd = data['credential']
+            uid = data['credential']['id']
+            pw = data['credential']['password']
 
         logging.warn('************** RUN ***************')
+
         for ndex_id in ids:
-            yield GenerateImage(ndex_id, crd)
+            yield GenerateImage(ndex_id, uid, pw)
 
 
 class GetNetworkFile(luigi.Task):
 
     network_id = luigi.Parameter()
-    crd = luigi.Parameter()
+    id = luigi.Parameter()
+    pw = luigi.Parameter()
 
     def output(self):
         return luigi.LocalTarget(str(self.network_id) + '.json')
 
     def run(self):
-        logging.warn('---------- CRD:')
-        logging.warn(self.crd)
-
         with self.output().open('w') as f:
 
             # Check optional parameter
             s = requests.session()
 
-            if 'id' in self.crd and 'password' in self.crd:
-                s.auth = (self.crd['id'], self.crd['password'])
+            if self.id is not "" and self.pw is not "":
+                s.auth = (self.id, self.pw)
                 res = s.get(NDEX_URL + NDEX_AUTH)
 
                 if res.status_code != 200:
@@ -65,6 +67,7 @@ class GetNetworkFile(luigi.Task):
             # Error check: 401 may be given
             if response.status_code != 200:
                 logging.warn('!!!!!!!!!!!!!!!!!!!!!!!Error getting CX network: CODE ' + str(response.status_code))
+                raise RuntimeError("Could not fetch CX network file.")
 
             for block in response.iter_content(1024):
                 f.write(block.decode('utf-8'))
@@ -73,10 +76,11 @@ class GetNetworkFile(luigi.Task):
 class GenerateImage(luigi.Task):
 
     network_id = luigi.Parameter()
-    crd = luigi.Parameter()
+    id = luigi.Parameter()
+    pw = luigi.Parameter()
 
     def requires(self):
-        return {'cx': GetNetworkFile(self.network_id, self.crd)}
+        return {'cx': GetNetworkFile(self.network_id, self.id, self.pw)}
 
     def output(self):
         return luigi.LocalTarget("graph_image_" + self.network_id + ".svg")
