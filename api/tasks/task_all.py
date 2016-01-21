@@ -1,13 +1,17 @@
 import luigi
 import requests
 import json
-import os
 import logging
+import binascii
+import glob
+import os
 
 
-BASE = 'http://52.35.133.2:5000/'
+BASE = 'http://52.88.64.154:5000/'
+
 NDEX_URL = 'http://dev2.ndexbio.org/rest/'
 NDEX_AUTH = '/user/authenticate'
+IMAGE_URL = "http://52.32.158.148/image/"
 
 ID_LIST_FILE = 'id_list.json'
 
@@ -16,6 +20,9 @@ ID_LIST_FILE = 'id_list.json'
 
 
 class RunTask(luigi.Task):
+
+    def output(self):
+        return luigi.LocalTarget('report.txt')
 
     def run(self):
         with open(ID_LIST_FILE, 'r') as f:
@@ -32,10 +39,27 @@ class RunTask(luigi.Task):
             uid = data['credential']['id']
             pw = data['credential']['password']
 
-        logging.warn('************** RUN ***************')
+        logging.warn('Start2 ***************')
+        logging.warn(ids)
 
         for ndex_id in ids:
-            yield GenerateImage(ndex_id, uid, pw)
+            yield CacheImage(ndex_id, uid, pw)
+
+        # Consolidate results
+        logging.warn('Writing report ***************')
+        report_files = glob.glob('/app/report*.txt')
+
+        image_url_list = []
+        with self.output().open('w') as f:
+            for fl in report_files:
+                with open(fl) as report:
+                    rep = report.read()
+                    image_url_list.append(rep)
+                    os.remove(fl)
+
+            json.dump(image_url_list, f)
+
+        logging.warn('------------ Finished2 -----------------')
 
 
 class GetNetworkFile(luigi.Task):
@@ -48,6 +72,7 @@ class GetNetworkFile(luigi.Task):
         return luigi.LocalTarget(str(self.network_id) + '.json')
 
     def run(self):
+
         with self.output().open('w') as f:
 
             # Check optional parameter
@@ -98,8 +123,37 @@ class GenerateImage(luigi.Task):
         # Remove input file
         os.remove(str(self.network_id) + '.json')
         logging.warn('%%%%%%%%%%% Done: ' + str(self.network_id))
-        with open('report.txt', 'a') as result:
-            result.write('http://example.com/' + str(self.network_id) + ".svg\n")
+
+
+class CacheImage(luigi.Task):
+
+    network_id = luigi.Parameter()
+    id = luigi.Parameter()
+    pw = luigi.Parameter()
+
+    def requires(self):
+        return {'gen': GenerateImage(self.network_id, self.id, self.pw)}
+
+    def output(self):
+        return luigi.LocalTarget('report.' + str(self.network_id) + '.txt')
+
+    def run(self):
+
+        image_cache_url = IMAGE_URL + 'svg/' + str(self.network_id)
+
+        with self.input()['gen'].open('r') as f:
+            img_data = f.read()
+
+        img = binascii.a2b_qp(img_data)
+        res = requests.post(image_cache_url, data=img)
+
+        status_code = res.status_code
+        if status_code is not 200:
+            logging.warn('Failed to POST image file')
+
+        # Remove input file
+        with self.output().open('w') as result:
+            result.write(IMAGE_URL + str(self.network_id))
 
 
 if __name__ == '__main__':

@@ -4,16 +4,22 @@ import subprocess
 import glob
 import os
 import logging
+import json
 
 
 class Runner(Resource):
 
     def post(self):
-        # Cleanup (Old SVG files in the system
-        for fl in glob.glob('/app/*.svg'):
-            logging.info('Removing old files: ' + str(fl.title()))
-            os.remove(fl)
 
+        # Cleanup (Old SVG files in the system
+        img_files = glob.glob('/app/*.svg')
+        report_files = glob.glob('/app/report*.txt')
+
+        to_be_removed = img_files + report_files
+
+        for fl in to_be_removed:
+            logging.info('* Removing old file: ' + str(fl.title()))
+            os.remove(fl)
 
         # Save file for Luigi task
         with open('id_list.json', 'w') as f:
@@ -22,21 +28,21 @@ class Runner(Resource):
         subprocess.call(['/app/api/run_luigi.sh'])
 
         os.remove('id_list.json')
-        logging.info('ID list file removed')
 
         try:
-            with open('report.txt', 'r') as res:
-                results = res.readlines()
+            with open('report.txt') as report:
+                data = json.load(report)
         except FileNotFoundError:
             return {"message": "Failed to run the workflow."}, 500
 
+        logging.warn("Final result================")
+        logging.warn(data)
 
-
-        resultMsg = {"imageLocations": results}
+        result_msg = {"image_urls": data}
 
         try:
             os.remove('report.txt')
         except FileNotFoundError:
             pass
 
-        return resultMsg
+        return result_msg

@@ -8,7 +8,8 @@ class Status(Resource):
         status = {
             'serviceName': 'Image generator queue',
             'description': 'Generate image from list of NDEx IDs',
-            'version': 'v1'
+            'apiVersion': 'v1',
+            'buildVersion': '0.1.2'
         }
 
         return status
