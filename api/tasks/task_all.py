@@ -7,7 +7,9 @@ import glob
 import os
 
 
-BASE = 'http://52.88.64.154:5000/'
+BASE = 'http://52.89.37.126:5000/'
+
+ID_MAPPING = 'http://52.11.197.18:3000/'
 
 NDEX_URL = 'http://dev2.ndexbio.org/rest/'
 NDEX_AUTH = '/user/authenticate'
@@ -98,6 +100,60 @@ class GetNetworkFile(luigi.Task):
                 f.write(block.decode('utf-8'))
 
 
+class ConvertID(luigi.Task):
+
+    network_id = luigi.Parameter()
+    id = luigi.Parameter()
+    pw = luigi.Parameter()
+
+    def requires(self):
+        return {
+            'cx': GetNetworkFile(self.network_id, self.id, self.pw)
+        }
+
+    def output(self):
+        return luigi.LocalTarget(str(self.network_id) + '.mapped.json')
+
+    def run(self):
+
+        with self.input()['cx'].open('r') as cxf:
+            cx = json.load(cxf)
+
+        query_ids = []
+
+        for entry in cx:
+            if 'nodes' in entry:
+                for node in entry['nodes']:
+                    if 'n' in node:
+                        query_ids.append(node['n'])
+
+        query = {
+            'ids': query_ids,
+            'idTypes': ["GeneID", "Symbol", "UniProtKB-ID", "tax_id"]
+        }
+        res = requests.post(ID_MAPPING+'map', json=query)
+
+        if res.status_code == 200:
+            self.__map_ids(res.json(), cx)
+
+        with self.output().open('w') as f:
+            json.dump(cx, f)
+
+    def __map_ids(self, mappings, cx):
+        id_mapping = {}
+        for entry in mappings['matched']:
+            id_mapping[entry['in']] = entry['matches']
+
+        for entry in cx:
+            if 'nodes' in entry:
+                for node in entry['nodes']:
+                    if 'n' in node:
+                        original_id = node['n']
+
+                        if original_id in id_mapping and 'Symbol' in id_mapping[original_id]:
+                            node['n'] = id_mapping[node['n']]['Symbol']
+
+
 class GenerateImage(luigi.Task):
 
     network_id = luigi.Parameter()
@@ -105,7 +161,9 @@ class GenerateImage(luigi.Task):
     pw = luigi.Parameter()
 
     def requires(self):
-        return {'cx': GetNetworkFile(self.network_id, self.id, self.pw)}
+        return {
+            'cx': ConvertID(self.network_id, self.id, self.pw)
+        }
 
     def output(self):
         return luigi.LocalTarget("graph_image_" + self.network_id + ".svg")
@@ -122,6 +180,7 @@ class GenerateImage(luigi.Task):
 
         # Remove input file
         os.remove(str(self.network_id) + '.json')
+        os.remove(str(self.network_id) + '.mapped.json')
         logging.warn('%%%%%%%%%%% Done: ' + str(self.network_id))
 
 
