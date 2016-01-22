@@ -6,8 +6,8 @@ import binascii
 import glob
 import os
 
-
-BASE = 'http://52.89.37.126:5000/'
+# Image generator service URL
+BASE = 'http://192.168.99.100:5000/'
 
 ID_MAPPING = 'http://52.11.197.18:3000/'
 
@@ -129,7 +129,7 @@ class ConvertID(luigi.Task):
 
         query = {
             'ids': query_ids,
-            'idTypes': ["GeneID", "Symbol", "UniProtKB-ID", "tax_id"]
+            'idTypes': ["GeneID", "Symbol", "UniProtKB-ID", "tax_id", "type_of_gene"]
         }
         res = requests.post(ID_MAPPING+'map', json=query)
 
@@ -141,17 +141,41 @@ class ConvertID(luigi.Task):
 
     def __map_ids(self, mappings, cx):
         id_mapping = {}
+
         for entry in mappings['matched']:
             id_mapping[entry['in']] = entry['matches']
+
+        node_attributes = []
 
         for entry in cx:
             if 'nodes' in entry:
                 for node in entry['nodes']:
+                    node_id = node['@id']
                     if 'n' in node:
                         original_id = node['n']
 
                         if original_id in id_mapping and 'Symbol' in id_mapping[original_id]:
-                            node['n'] = id_mapping[node['n']]['Symbol']
+                            original_entry = id_mapping[node['n']]
+                            node['n'] = original_entry['Symbol']
+                            # Create Tax_id attribute
+                            if 'tax_id' in id_mapping[original_id]:
+                                tax_id = {
+                                    'n': 'tax_id',
+                                    'po': node_id,
+                                    'v': original_entry['tax_id']
+                                }
+                                node_attributes.append(tax_id)
+                                logging.warn('****** GOT TAX: ' + str(tax_id))
+                            if 'type_of_gene' in id_mapping[original_id]:
+                                type_of_gene = {
+                                    'n': 'type_of_gene',
+                                    'po': node_id,
+                                    'v': original_entry['type_of_gene']
+                                }
+                                node_attributes.append(type_of_gene)
+
+        cx.append({'nodeAttributes': node_attributes})
+
 
 
 class GenerateImage(luigi.Task):
